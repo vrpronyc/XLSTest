@@ -145,7 +145,7 @@ namespace XLSTest
                 tokens.Add(token);
             }
             ExcelFormulaEvaluator formulaEvaluator = new ExcelFormulaEvaluator(m_WorkBook);
-            float val = formulaEvaluator.EvaluateFormulaFromTokens(sheet, tokens, string.Empty);
+            FormulaReturnValue retValue = formulaEvaluator.EvaluateFormulaFromTokens(sheet, tokens, string.Empty);
 
             return 0;
         }
@@ -207,8 +207,18 @@ namespace XLSTest
             Console.WriteLine("cell " +row.ToString() + "," + col.ToString() + " \"" + cellString + "\" is \"" + CellToString(cell) + "\"");
             if (cell.CellType == CellType.Formula)
             {
-                float val = EvaluateFormula(cell);
-                Console.WriteLine("cell formula = " + val.ToString("R"));
+                FormulaReturnValue cellValue = ExcelFormulaEvaluator.EvaluateCellFormula(m_WorkBook, cell);
+                if (cellValue == null)
+                {
+                    Console.WriteLine("Cell value NULL");
+                }
+                else
+                {
+                    if (cellValue.returnType == FormulaReturnType.stringFormula)
+                        Console.WriteLine("cell formula = \"" + cellValue.stringValue + "\"");
+                    else
+                        Console.WriteLine("cell formula = " + cellValue.floatValue.ToString("R"));
+                }
             }
             //m_Sheet = m_WorkBook.GetSheet(BUDGET_EXAMPLE_SHEET_NAME);
             //if (m_Sheet == null)

@@ -59,8 +59,13 @@ namespace Toolsbox.ShuntingYard
                 if(IsNoise(s))
                     continue;
 
+                bool isNum = false;
+                float val = 0;
+                if (float.TryParse(s.ToString(), out val))
+                    isNum = true;
+
                 char? o = TypecastOperator(s);
-                if (IsOperator(o))
+                if (!isNum && (IsOperator(o)))
                 {
                     while (opr.Count > 0)
                     {

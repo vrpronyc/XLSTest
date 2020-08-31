@@ -13,11 +13,21 @@ using ExcelFormulaParser;
 using System.Reflection;
 using System.Data;
 
+using Toolsbox.ShuntingYard;
+
 namespace XLSTest
 {
+    [System.Serializable]
+    public enum FormulaReturnType { stringFormula, floatFormula };
+    public class FormulaReturnValue
+    {
+        public FormulaReturnType returnType;
+        public string stringValue;
+        public float floatValue;
+    }
+
     public class ExcelFormulaEvaluator
     {
-
         XSSFWorkbook m_WorkBook;
         ISheet m_Sheet;
 
@@ -104,6 +114,30 @@ namespace XLSTest
                 sheetName = string.Empty;
             }
         }
+
+        static string CellValueAsString(ICell cell)
+        {
+            switch (cell.CellType)
+            {
+                case CellType.Unknown:
+                    return "Unknown";
+                case CellType.Numeric:
+                    return cell.NumericCellValue.ToString("R");
+                case CellType.String:
+                    return cell.StringCellValue; 
+                case CellType.Formula:
+                    return cell.CellFormula;
+                case CellType.Blank:
+                    return "";
+                case CellType.Boolean:
+                    return cell.BooleanCellValue.ToString();
+                case CellType.Error:
+                    return "Error";
+                default:
+                    return "default";
+            }
+        }
+
         // formats of valid cell argument:
         // ##.##
         // LL##
@@ -184,6 +218,7 @@ namespace XLSTest
                     {
                         cellArg.caType = CellArgumentType.CAString;
                         cellArg.stringVal = argString;
+                        return cellArg;
                     }
                     // format of sheetString[0] not sheet!something must be LL##:LL##
                     cellArg = ParseRange(sheetString[0], argString);
@@ -208,6 +243,7 @@ namespace XLSTest
                         // valid range, but this is with at sheet name - change accordingly
                         cellArg.caType = CellArgumentType.CASheetRange;
                         cellArg.sheetName = sheetString[0];
+                        return cellArg;
                     }
                     else
                         return cellArg;
@@ -220,8 +256,6 @@ namespace XLSTest
                 cellArg.col0 = col;
                 return cellArg;
             }
-
-            return null;
         }
         static public bool ParseCell(string cellString, out int row, out int column)
         {
@@ -273,11 +307,13 @@ namespace XLSTest
             return true;
         }
 
+        #region excel_formulas
 
-
-        public float MAX(string arg)
+        public FormulaReturnValue MAX(string arg)
         {
             CellArgument cellArg = ParseCellArgument(arg);
+            FormulaReturnValue retValue = new FormulaReturnValue();
+            retValue.returnType = FormulaReturnType.floatFormula;
             switch (cellArg.caType)
             {
                 case CellArgumentType.NA:
@@ -285,12 +321,13 @@ namespace XLSTest
                 case CellArgumentType.CAString:
                     {
                         Console.WriteLine("Invalid Cell Type " + cellArg.caType.ToString() + " \"" + arg + "\"");
-                        return 0;
+                        retValue.floatValue = 0;
+                        return retValue;
                     }
                     break;
                 case CellArgumentType.CAValue:
-                    return cellArg.val;
-                    break;
+                    retValue.floatValue = cellArg.val;
+                    return retValue;
                 case CellArgumentType.CACell:
                     {
                         int row = cellArg.row0;
@@ -301,11 +338,13 @@ namespace XLSTest
                         bool valid = false;
                         float val = FetchNumericValueFromCell(cell, out valid);
                         if (!valid)
-                        { 
+                        {
                             Console.WriteLine($"Could not numeric value cell {row},{col} from sheet \"{sheetName}\"");
-                            return 0;
+                            retValue.floatValue = 0;
+                            return retValue;
                         }
-                        return val;
+                        retValue.floatValue = val;
+                        return retValue;
                     }
                     break;
                 case CellArgumentType.CARange:
@@ -343,7 +382,8 @@ namespace XLSTest
                                 }
                             }
                         }
-                        return maxVal;
+                        retValue.floatValue = maxVal;
+                        return retValue;
                     }
                     break;
                 case CellArgumentType.CASheetCell:
@@ -358,9 +398,11 @@ namespace XLSTest
                         if (!valid)
                         {
                             Console.WriteLine($"Could not numeric value cell {row},{col} from sheet \"{sheetName}\"");
-                            return 0;
+                            retValue.floatValue = 0;
+                            return retValue;
                         }
-                        return val;
+                        retValue.floatValue = val;
+                        return retValue;
                     }
                     break;
                 case CellArgumentType.CASheetRange:
@@ -398,16 +440,339 @@ namespace XLSTest
                                 }
                             }
                         }
-                        return maxVal;
+                        retValue.floatValue = maxVal;
+                        return retValue;
+
                     }
                     break;
                 default:
                     break;
             }
-            return 0;
+            retValue.floatValue = 0;
+            return retValue;
         }
 
-        float EvaluateFormula(XSSFWorkbook workbook, ISheet sheet, ExcelFormula excelFormula)
+        public FormulaReturnValue SUM(string arg)
+        {
+            CellArgument cellArg = ParseCellArgument(arg);
+            FormulaReturnValue retValue = new FormulaReturnValue();
+            retValue.returnType = FormulaReturnType.floatFormula;
+
+            switch (cellArg.caType)
+            {
+                case CellArgumentType.NA:
+                    break;
+                case CellArgumentType.CAString:
+                    {
+                        Console.WriteLine("Invalid Cell Type " + cellArg.caType.ToString() + " \"" + arg + "\"");
+                        retValue.floatValue = 0;
+                        return retValue;
+                    }
+                    break;
+                case CellArgumentType.CAValue:
+                    retValue.floatValue = cellArg.val;
+                    return retValue;
+                    break;
+                case CellArgumentType.CACell:
+                    {
+                        int row = cellArg.row0;
+                        int col = cellArg.col0;
+                        string sheetName = m_Sheet.SheetName;
+                        ExcelFormulaEvaluator excelFormulaEvaluator = new ExcelFormulaEvaluator(m_WorkBook);
+                        ICell cell = excelFormulaEvaluator.FetchCellFromSheet(sheetName, row, col);
+                        bool valid = false;
+                        float val = FetchNumericValueFromCell(cell, out valid);
+                        if (!valid)
+                        {
+                            Console.WriteLine($"Could not numeric value cell {row},{col} from sheet \"{sheetName}\"");
+                            retValue.floatValue = 0;
+                            return retValue;
+                        }
+                        retValue.floatValue = val;
+                        return retValue;
+                    }
+                    break;
+                case CellArgumentType.CARange:
+                    {
+                        float sum = 0;
+                        string sheetName = m_Sheet.SheetName;
+                        ExcelFormulaEvaluator excelFormulaEvaluator = new ExcelFormulaEvaluator(m_WorkBook);
+                        for (int row = cellArg.row0; row <= cellArg.row1; row++)
+                        {
+                            for (int col = cellArg.col0; col <= cellArg.col1; col++)
+                            {
+                                ICell cell = excelFormulaEvaluator.FetchCellFromSheet(sheetName, row, col);
+                                if (cell != null)
+                                {
+                                    bool valid = false;
+                                    float val = FetchNumericValueFromCell(cell, out valid);
+                                    if (!valid)
+                                    {
+                                        Console.WriteLine($"Could not numeric value cell {row},{col} from sheet \"{sheetName}\"");
+                                    }
+                                    else
+                                    {
+                                        sum += val;
+                                    }
+                                }
+                            }
+                        }
+                        retValue.floatValue = sum;
+                        return retValue;
+                    }
+                    break;
+                case CellArgumentType.CASheetCell:
+                    {
+                        int row = cellArg.row0;
+                        int col = cellArg.col0;
+                        string sheetName = cellArg.sheetName;
+                        ExcelFormulaEvaluator excelFormulaEvaluator = new ExcelFormulaEvaluator(m_WorkBook);
+                        ICell cell = excelFormulaEvaluator.FetchCellFromSheet(sheetName, row, col);
+                        bool valid = false;
+                        float val = FetchNumericValueFromCell(cell, out valid);
+                        if (!valid)
+                        {
+                            Console.WriteLine($"Could not numeric value cell {row},{col} from sheet \"{sheetName}\"");
+                            retValue.floatValue = 0;
+                            return retValue;
+                        }
+                        retValue.floatValue = val;
+                        return retValue;
+                    }
+                    break;
+                case CellArgumentType.CASheetRange:
+                    {
+                        string sheetName = cellArg.sheetName;
+                        float sum = 0;
+                        ExcelFormulaEvaluator excelFormulaEvaluator = new ExcelFormulaEvaluator(m_WorkBook);
+                        for (int row = cellArg.row0; row <= cellArg.row1; row++)
+                        {
+                            for (int col = cellArg.col0; col <= cellArg.col1; col++)
+                            {
+                                ICell cell = excelFormulaEvaluator.FetchCellFromSheet(sheetName, row, col);
+                                if (cell != null)
+                                {
+                                    bool valid = false;
+                                    float val = FetchNumericValueFromCell(cell, out valid);
+                                    if (!valid)
+                                    {
+                                        Console.WriteLine($"Could not numeric value cell {row},{col} from sheet \"{sheetName}\"");
+                                    }
+                                    else
+                                    {
+                                        sum += val;
+                                    }
+                                }
+                            }
+                        }
+                        retValue.floatValue = sum;
+                        return retValue;
+                    }
+                    break;
+                default:
+                    break;
+            }
+            retValue.floatValue = 0;
+            return retValue;
+        }
+
+        public FormulaReturnValue VLOOKUP(string arg0, string arg1, string arg2, string arg3)
+        {
+            FormulaReturnValue lookupVal = new FormulaReturnValue();
+            CellArgument cellArg = ParseCellArgument(arg0);
+            switch (cellArg.caType)
+            {
+                case CellArgumentType.NA:
+                    break;
+                case CellArgumentType.CAString:
+                    lookupVal.returnType = FormulaReturnType.stringFormula;
+                    lookupVal.stringValue = cellArg.stringVal;
+                    break;
+                case CellArgumentType.CAValue:
+                    lookupVal.returnType = FormulaReturnType.stringFormula;
+                    lookupVal.stringValue = cellArg.stringVal;
+                    break;
+                case CellArgumentType.CACell:
+                    {
+                        string sheetName = m_Sheet.SheetName;
+                        int row = cellArg.row0;
+                        int col = cellArg.col0;
+                        ICell cell = FetchCellFromSheet(sheetName, row, col);
+                        if (cell != null)
+                        {
+                            if (cell.CellType != CellType.Numeric)
+                            {
+                                if (cell.CellType == CellType.Formula)
+                                {
+                                    lookupVal = EvaluateCellFormula(m_WorkBook, cell);
+                                }
+                                else
+                                {
+                                    lookupVal.returnType = FormulaReturnType.stringFormula;
+                                    lookupVal.stringValue = CellValueAsString(cell);
+                                }
+                            }
+                            else
+                            {
+                                lookupVal.returnType = FormulaReturnType.floatFormula;
+                                lookupVal.floatValue = (float)(cell.NumericCellValue);
+                            }
+                        }
+                    }
+                    break;
+                case CellArgumentType.CARange:
+                    Console.WriteLine("Invalid argument");
+                    return null;
+                case CellArgumentType.CASheetCell:
+                    {
+                        string sheetName = cellArg.sheetName;
+                        int row = cellArg.row0;
+                        int col = cellArg.col0;
+                        ICell cell = FetchCellFromSheet(sheetName, row, col);
+                        if (cell != null)
+                        {
+                            if (cell.CellType != CellType.Numeric)
+                            {
+                                lookupVal.returnType = FormulaReturnType.stringFormula;
+                                lookupVal.stringValue = CellValueAsString(cell);
+                            }
+                            else
+                            {
+                                lookupVal.returnType = FormulaReturnType.floatFormula;
+                                lookupVal.floatValue = (float)(cell.NumericCellValue);
+                            }
+                        }
+                    }
+                    break;
+                case CellArgumentType.CASheetRange:
+                    Console.WriteLine("Invalid argument");
+                    return null;
+                default:
+                    break;
+            }
+
+            CellArgument cellRangeArg = ParseCellArgument(arg1);
+            switch (cellRangeArg.caType)
+            {
+                case CellArgumentType.NA:
+                    Console.WriteLine("Invalid argument");
+                    return null;
+                case CellArgumentType.CAString:
+                    Console.WriteLine("Invalid argument");
+                    return null;
+                case CellArgumentType.CAValue:
+                    Console.WriteLine("Invalid argument");
+                    return null;
+                case CellArgumentType.CACell:
+                    Console.WriteLine("Invalid argument");
+                    return null;
+                case CellArgumentType.CARange:
+                    break;
+                case CellArgumentType.CASheetCell:
+                    Console.WriteLine("Invalid argument");
+                    return null;
+                case CellArgumentType.CASheetRange:
+                    break;
+                default:
+                    Console.WriteLine("Invalid argument");
+                    return null;
+            }
+
+            int valueCol = 0;
+            if(!int.TryParse(arg2, out valueCol))
+            {
+                Console.WriteLine("Invalid argument");
+                return null;
+            }
+            valueCol = cellRangeArg.col0 + valueCol - 1;
+
+            string rangeSheetName = m_Sheet.SheetName;
+            if (cellRangeArg.caType == CellArgumentType.CASheetRange)
+                rangeSheetName = cellRangeArg.sheetName;
+
+            Console.WriteLine("Looking for \"" + (lookupVal.returnType == FormulaReturnType.stringFormula ? lookupVal.stringValue : lookupVal.floatValue.ToString("R")) + "\"");
+            for (int i = cellRangeArg.row0; i <= cellRangeArg.row1; i++)
+            {
+                ICell cell = FetchCellFromSheet(rangeSheetName, i, cellRangeArg.col0);
+                if (lookupVal.returnType == FormulaReturnType.stringFormula)
+                {
+                    if (cell.CellType == CellType.Numeric)
+                    {
+                        if (Math.Abs(cell.NumericCellValue - (double)lookupVal.floatValue) < 0.000001f)
+                        {
+                            Console.WriteLine("FOUND VALUE row " + i.ToString() + " cell \"" + (cell == null ? "null" : CellValueAsString(cell)) + "\"");
+                            ICell returnCell = FetchCellFromSheet(rangeSheetName, i, valueCol);
+                            if (returnCell == null)
+                                return null;
+                            FormulaReturnValue retValue = new FormulaReturnValue();
+                            if (returnCell.CellType == CellType.Numeric)
+                            {
+                                retValue.returnType = FormulaReturnType.floatFormula;
+                                retValue.floatValue = (float)(returnCell.NumericCellValue);
+                                return retValue;
+                            }
+                            else
+                            {
+                                retValue.returnType = FormulaReturnType.stringFormula;
+                                retValue.stringValue = CellValueAsString(returnCell);
+                                return retValue;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        if (CellValueAsString(cell) == lookupVal.stringValue)
+                        {
+                            Console.WriteLine("FOUND STRING row " + i.ToString() + " cell \"" + (cell == null ? "null" : CellValueAsString(cell)) + "\"");
+                            ICell returnCell = FetchCellFromSheet(rangeSheetName, i, valueCol);
+                            if (returnCell == null)
+                                return null;
+                            FormulaReturnValue retValue = new FormulaReturnValue();
+                            if (returnCell.CellType == CellType.Numeric)
+                            {
+                                retValue.returnType = FormulaReturnType.floatFormula;
+                                retValue.floatValue = (float)(returnCell.NumericCellValue);
+                                return retValue;
+                            }
+                            else
+                            {
+                                retValue.returnType = FormulaReturnType.stringFormula;
+                                retValue.stringValue = CellValueAsString(returnCell);
+                                return retValue;
+                            }
+                        }
+                    }
+                }
+                Console.WriteLine("searching row " + i.ToString() + " cell \"" + (cell == null ? "null" : CellValueAsString(cell)) + "\"");
+            }
+
+            return null;
+        }
+
+        #endregion
+
+        public static FormulaReturnValue EvaluateCellFormula(XSSFWorkbook workbook, ICell cell)
+        {
+            if (cell.CellType != CellType.Formula)
+                return null ;
+            ISheet sheet = cell.Sheet;
+
+            string formula = "=" + cell.CellFormula;
+
+            ExcelFormula excelFormula = new ExcelFormula(formula);
+            List<ExcelFormulaToken> tokens = new List<ExcelFormulaToken>();
+            foreach (ExcelFormulaToken token in excelFormula)
+            {
+                Console.WriteLine("Token type \"" + token.Type.ToString() + "\" value \"" + token.Value + "\"");
+                tokens.Add(token);
+            }
+            ExcelFormulaEvaluator formulaEvaluator = new ExcelFormulaEvaluator(workbook);
+            FormulaReturnValue retValue = formulaEvaluator.EvaluateFormulaFromTokens(sheet, tokens, string.Empty);
+
+            return retValue;
+        }
+
+        FormulaReturnValue EvaluateFormula(XSSFWorkbook workbook, ISheet sheet, ExcelFormula excelFormula)
         {
             m_WorkBook = workbook;
             m_Sheet = sheet;
@@ -420,7 +785,7 @@ namespace XLSTest
             return EvaluateFormulaFromTokens(sheet, tokens, string.Empty);
         }
 
-        float MakeFormulaCall(string formulaName, List<ExcelFormulaToken> tokens)
+        FormulaReturnValue MakeFormulaCall(string formulaName, List<ExcelFormulaToken> tokens)
         {
             // Due to recursion, this formula should not contain other formulas.
             // Find any arguments that are NOT Operand or Argument
@@ -435,20 +800,29 @@ namespace XLSTest
             // Now build the argument list and invoke the method
             Type thisType = this.GetType();
             MethodInfo theMethod = thisType.GetMethod(formulaName);
-            List<object> formulaArguments = new List<object>();
-            for (int i = 0; i < resolvedTokens.Count; i++)
+            if (theMethod == null)
             {
-                if (resolvedTokens[i].Type == ExcelFormulaTokenType.Operand)
-                {
-                    formulaArguments.Add(resolvedTokens[i].Value);
-                }
+                // is this just a cell lookup?
+                Console.WriteLine("UNKNOWN FORMULA \"" + formulaName + "\"");
+                return null;
             }
+            else
+            {
+                List<object> formulaArguments = new List<object>();
+                for (int i = 0; i < resolvedTokens.Count; i++)
+                {
+                    if (resolvedTokens[i].Type == ExcelFormulaTokenType.Operand)
+                    {
+                        formulaArguments.Add(resolvedTokens[i].Value);
+                    }
+                }
 
-            float val = (float)theMethod.Invoke(this, formulaArguments.ToArray());
-            return val ;
+                FormulaReturnValue retValue = (FormulaReturnValue)theMethod.Invoke(this, formulaArguments.ToArray());
+                return retValue;
+            }
         }
 
-        public float EvaluateFormulaFromTokens(ISheet sheet, List<ExcelFormulaToken>tokens, string formulaName)
+        public FormulaReturnValue EvaluateFormulaFromTokens(ISheet sheet, List<ExcelFormulaToken>tokens, string formulaName)
         {
             m_Sheet = sheet;
             List<ExcelFormulaToken> tokensToEvaluate = new List<ExcelFormulaToken>();
@@ -478,9 +852,16 @@ namespace XLSTest
                                     //float val = EvaluateFormulaFromTokens(workbook, sheet, tokensToEvaluate, formulaName);
                                     //ExcelFormulaToken fToken = new ExcelFormulaToken(val.ToString("R"), ExcelFormulaTokenType.Operand);
                                     //tokensToEvaluate.Add(fToken);
-                                    float val = MakeFormulaCall(formulaName, tokensInFormula);
-                                    ExcelFormulaToken fToken = new ExcelFormulaToken(val.ToString("R"), ExcelFormulaTokenType.Operand);
-                                    tokensToEvaluate.Add(fToken);
+                                    FormulaReturnValue retValue = MakeFormulaCall(formulaName, tokensInFormula);
+                                    if (retValue != null)
+                                    {
+                                        ExcelFormulaToken fToken = new ExcelFormulaToken(string.Empty, ExcelFormulaTokenType.Noop);
+                                        if (retValue.returnType == FormulaReturnType.floatFormula)
+                                            fToken = new ExcelFormulaToken(retValue.floatValue.ToString("R"), ExcelFormulaTokenType.Operand);
+                                        else
+                                            fToken = new ExcelFormulaToken(retValue.stringValue, ExcelFormulaTokenType.Operand);
+                                        tokensToEvaluate.Add(fToken);
+                                    }
                                     insideFormula = false;
                                 }
                             }
@@ -546,13 +927,138 @@ namespace XLSTest
                 Console.WriteLine("Token type \"" + token.Type.ToString() + "\" value \"" + token.Value + "\"");
             }
 
+            bool formulaIsNumeric = true;
             StringBuilder sb = new StringBuilder();
             for (int i = 0; i < tokensToEvaluate.Count; i++)
             {
+                ExcelFormulaToken token = tokensToEvaluate[i];
+                switch (token.Type)
+                {
+                    case ExcelFormulaTokenType.Noop:
+                        break;
+                    case ExcelFormulaTokenType.Operand:
+                        {
+                            float val = 0;
+                            if (float.TryParse(token.Value, out val))
+                            {
+                                sb.Append(token.Value);
+                            }
+                            else
+                            {
+                                CellArgument cellArg = ParseCellArgument(token.Value);
+                                switch (cellArg.caType)
+                                {
+                                    case CellArgumentType.NA:
+                                        break;
+                                    case CellArgumentType.CAString:
+                                        formulaIsNumeric = false;
+                                        sb.Append(token.Value);
+                                        break;
+                                    case CellArgumentType.CAValue:
+                                        sb.Append(token.Value);
+                                        break;
+                                    case CellArgumentType.CACell:
+                                        {
+                                            string sheetName = m_Sheet.SheetName;
+                                            int row = cellArg.row0;
+                                            int col = cellArg.col0;
+                                            ICell cell = FetchCellFromSheet(sheetName, row, col);
+                                            if (cell != null)
+                                            {
+                                                if (cell.CellType != CellType.Numeric)
+                                                {
+                                                    formulaIsNumeric = false;
+                                                    sb.Append(CellValueAsString(cell));
+                                                }
+                                                else
+                                                    sb.Append(cell.NumericCellValue.ToString("R"));
+                                            }
+                                        }
+                                        break;
+                                    case CellArgumentType.CARange:
+                                        sb.Append(token.Value);
+                                        break;
+                                    case CellArgumentType.CASheetCell:
+                                        {
+                                            string sheetName = cellArg.sheetName;
+                                            int row = cellArg.row0;
+                                            int col = cellArg.col0;
+                                            ICell cell = FetchCellFromSheet(sheetName, row, col);
+                                            if (cell != null)
+                                            {
+                                                if (cell.CellType != CellType.Numeric)
+                                                {
+                                                    formulaIsNumeric = false;
+                                                    sb.Append(CellValueAsString(cell));
+                                                }
+                                                else
+                                                    sb.Append(cell.NumericCellValue.ToString("R"));
+                                            }
+                                        }
+                                        break;
+                                    case CellArgumentType.CASheetRange:
+                                        sb.Append(token.Value);
+                                        break;
+                                    default:
+                                        break;
+                                }
 
+                            }
+                            if (i < (tokensToEvaluate.Count - 1))
+                                sb.Append(" ");
+                        }
+                        break;
+                    case ExcelFormulaTokenType.Function:
+                        break;
+                    case ExcelFormulaTokenType.Subexpression:
+                        break;
+                    case ExcelFormulaTokenType.Argument:
+                        break;
+                    case ExcelFormulaTokenType.OperatorPrefix:
+                        sb.Append(token.Value);
+                        break;
+                    case ExcelFormulaTokenType.OperatorInfix:
+                        sb.Append(token.Value);
+                        if (i < (tokensToEvaluate.Count - 1))
+                            sb.Append(" ");
+                        break;
+                    case ExcelFormulaTokenType.OperatorPostfix:
+                        sb.Append(token.Value);
+                        if (i < (tokensToEvaluate.Count - 1))
+                            sb.Append(" ");
+                        break;
+                    case ExcelFormulaTokenType.Whitespace:
+                        break;
+                    case ExcelFormulaTokenType.Unknown:
+                        break;
+                    default:
+                        break;
+                }
             }
 
-            return 0;
+            FormulaReturnValue returnValue = new FormulaReturnValue();
+            if (formulaIsNumeric)
+            {
+                string formulaString = sb.ToString();
+                Console.WriteLine("formulaString \"" + formulaString + "\"");
+                ShuntingYardSimpleMath SY = new ShuntingYardSimpleMath();
+                List<String> ss = formulaString.Split(' ').ToList();
+                for (int i = 0; i < ss.Count; i++)
+                {
+                    Console.WriteLine("ss " + i.ToString() + ": \"" + ss[i] + "\"");
+                }
+
+                Double res = SY.Execute(ss, null);
+                Console.WriteLine("SY = " + res.ToString("R"));
+                returnValue.returnType = FormulaReturnType.floatFormula;
+                returnValue.floatValue = (float)res;
+            }
+            else
+            {
+                returnValue.returnType = FormulaReturnType.stringFormula;
+                returnValue.stringValue = sb.ToString();
+            }
+            return returnValue;
         }
 
     }
