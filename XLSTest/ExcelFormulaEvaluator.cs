@@ -115,7 +115,7 @@ namespace XLSTest
             }
         }
 
-        static string CellValueAsString(ICell cell)
+        static public string CellValueAsString(ICell cell)
         {
             switch (cell.CellType)
             {
@@ -763,7 +763,7 @@ namespace XLSTest
             List<ExcelFormulaToken> tokens = new List<ExcelFormulaToken>();
             foreach (ExcelFormulaToken token in excelFormula)
             {
-                Console.WriteLine("Token type \"" + token.Type.ToString() + "\" value \"" + token.Value + "\"");
+                //Console.WriteLine("Token type \"" + token.Type.ToString() + "\" value \"" + token.Value + "\"");
                 tokens.Add(token);
             }
             ExcelFormulaEvaluator formulaEvaluator = new ExcelFormulaEvaluator(workbook);
@@ -909,22 +909,7 @@ namespace XLSTest
                     default:
                         break;
                 }
-                //if (methodName != string.Empty)
-                //{
-                //    Type thisType = this.GetType();
-                //    MethodInfo theMethod = thisType.GetMethod(methodName);
-
-                //    theMethod.Invoke(this, excelFormula);
-                //}
-                //if (token.Type == ExcelFormulaTokenType.Function)
-                //{
-                //    methodName = token.Value;
-                //}
-                //Type thisType = this.GetType();
-                //MethodInfo theMethod = thisType.GetMethod(token.Value);
-                //theMethod.Invoke(this, excelFormula);
-
-                Console.WriteLine("Token type \"" + token.Type.ToString() + "\" value \"" + token.Value + "\"");
+                //Console.WriteLine("Token type \"" + token.Type.ToString() + "\" value \"" + token.Value + "\"");
             }
 
             bool formulaIsNumeric = true;
@@ -1040,16 +1025,16 @@ namespace XLSTest
             if (formulaIsNumeric)
             {
                 string formulaString = sb.ToString();
-                Console.WriteLine("formulaString \"" + formulaString + "\"");
+                //Console.WriteLine("formulaString \"" + formulaString + "\"");
                 ShuntingYardSimpleMath SY = new ShuntingYardSimpleMath();
                 List<String> ss = formulaString.Split(' ').ToList();
-                for (int i = 0; i < ss.Count; i++)
-                {
-                    Console.WriteLine("ss " + i.ToString() + ": \"" + ss[i] + "\"");
-                }
+                //for (int i = 0; i < ss.Count; i++)
+                //{
+                //    Console.WriteLine("ss " + i.ToString() + ": \"" + ss[i] + "\"");
+                //}
 
                 Double res = SY.Execute(ss, null);
-                Console.WriteLine("SY = " + res.ToString("R"));
+                //Console.WriteLine("SY = " + res.ToString("R"));
                 returnValue.returnType = FormulaReturnType.floatFormula;
                 returnValue.floatValue = (float)res;
             }
